@@ -5,7 +5,7 @@ const UserSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    exercises: [{
+    log: [{
         description: {
             type: String,
             required: true

@@ -7,6 +7,7 @@ const bodyParser = require('body-parser');
 const UserModel = require('./user-model');
 const ExerciseModel = require('./exercise-model');
 const { count } = require('./user-model');
+const { urlencoded } = require('express');
 
 require('dotenv').config();
 
@@ -30,63 +31,96 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/users', async (req, res) => {
-  try {
-    const {username} = req.body;
-    const saveUser = await UserModel.create({username: username});
-    res.send(saveUser);
-  } catch (error) {
-    res.status(500).send(error);
+  const {username} = req.body;
+  const savedUser = await UserModel.create({username})
+    .catch(error => {
+      res.send('err when save user')
+      return error
+    })
+  if (!savedUser) {
+    console.log(savedUser)
+    return
   }
+  res.send(savedUser)
 })
 
 app.get('/api/users', async (req, res) => {
-  try {
-    const users = await UserModel.find().select({_id: 1, username: 1});
-    res.send(users);
-  } catch (error) {
-    res.status(500).send(error);
-  }
+  const user = await UserModel.find().select('_id username')
+    .catch(err => {
+      res.send(err);
+      return
+    })
+  res.send(user)
 })
 
 app.post('/api/users/:_id/exercises', async (req, res) => {
-  const { ':_id': _id, description, duration  } = req.body;
-  const date = (req.body.date)?new Date(req.body.date).toDateString():new Date().toDateString()
-  try {
-    const saveExercise = {
-      date: date,
-      duration: parseInt(duration),
-      description: description
-    }
-    const user = await UserModel.findById(_id);
-    user.exercises.push(saveExercise);
-    const saveUser = await user.save();
-    res.send({
-      "_id": _id,
-      "username": saveUser.username,
-      ...saveExercise
-    })
-  } catch (error) {
-    res.send(error);
-  }
-})
-
-app.get('/api/users/:_id/logs', async (req, res) => {
   const _id = req.params._id;
-  try {
-    let user = await UserModel.findById(_id).select('-exercises._id');
-    user = user.toObject()
-    user.count = user.exercises.length
-    user.log = user.exercises
-    delete user.exercises
-    res.send(user)
-    
-  } catch (error) {
-    
+  const description = req.body.description;
+  const duration = parseInt(req.body.duration);
+  const date = (req.body.date)?new Date(req.body.date).toDateString(): new Date().toDateString();
+
+  if (!_id ) {
+    res.send('not invalid id')
+    return
   }
+
+  const user = await UserModel.findById(_id)
+    .catch(err => {
+      console.log(err)
+      return ''
+    })
+  if (!user) {
+    res.send('err when find user')
+    return
+  }
+  user.log.push({
+    description,
+    duration,
+    date
+  })
+
+  const savedUser = await user.save()
+    .catch(err => {
+      console.log(err)
+      return
+    })
+  if (!savedUser){
+    res.send('err when save user')
+    return
+  }
+  res.send({
+    _id,
+    username: user.username,
+    description,
+    duration,
+    date
+  })
 })
 
+app.get("/api/users/:_id/logs", async (req, res) => {
+  const userId = req.params._id
+  const fromDate = req.query.from
+  const toDate = req.query.to
+  // const limit = req.query.limit
+  const user = await UserModel.findById(userId)
+  const logs = user.log
+  const limit = parseInt(req.query.limit) || logs.length
+  const logResult = logs.filter(log => {
+    return (!fromDate || new Date(fromDate) <= new Date(log.date))
+      && (!toDate || new Date(toDate) >= new Date(log.date))
+  }).slice(0, limit)
+
+  res.json({
+    _id: user._id,
+    username: user.username,
+    count: logResult.length,
+    log: logResult
+  });
+});
 
 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log('Your app is listening on port ' + listener.address().port)
 })
+
+
